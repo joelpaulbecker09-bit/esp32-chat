@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Chat</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 650px; margin: 24px auto; padding: 0 16px; background: #f4f7fb; }
+    h1 { color: #173a63; }
+    #messages { height: 55vh; overflow-y: auto; background: white; border-radius: 12px; padding: 14px; box-shadow: 0 2px 10px #0002; }
+    .message { padding: 9px; border-bottom: 1px solid #eee; }
+    .sender { font-weight: bold; color: #1769aa; }
+    form, .name { display: flex; gap: 8px; margin-top: 12px; }
+    input { padding: 12px; border: 1px solid #bbb; border-radius: 8px; font-size: 16px; }
+    #text { flex: 1; }
+    button { padding: 12px 16px; border: 0; border-radius: 8px; background: #1769aa; color: white; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>ESP32 Chat</h1>
+
+  <div class="name">
+    <input id="sender" placeholder="Dein Name, z. B. Handy 1">
+  </div>
+
+  <div id="messages"></div>
+
+  <form id="form">
+    <input id="text" placeholder="Nachricht schreiben …" maxlength="280" required>
+    <button>Senden</button>
+  </form>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const db = supabase.createClient(
+      "https://ayafnjpwagannfkiceiz.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5YWZuanB3YWdhbm5ma2ljZWl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2OTU5MjAsImV4cCI6MjEwODI3MTkyMH0.XJXcyXwAPqhQcCuQFqgE7geCyIni1aNW_BHnN3gMR-E"
+    );
+
+    const messages = document.querySelector("#messages");
+    const sender = document.querySelector("#sender");
+    const form = document.querySelector("#form");
+    const text = document.querySelector("#text");
+
+    sender.value = localStorage.sender || "";
+    sender.addEventListener("input", () => localStorage.sender = sender.value);
+
+    function show(message) {
+      const item = document.createElement("div");
+      item.className = "message";
+
+      const name = document.createElement("span");
+      name.className = "sender";
+      name.textContent = message.sender + ": ";
+
+      const content = document.createElement("span");
+      content.textContent = message.text;
+
+      item.append(name, content);
+      messages.append(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function loadMessages() {
+      const { data } = await db
+        .from("messages")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .limit(100);
+
+      if (data) data.forEach(show);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = sender.value.trim() || "Unbekannt";
+      const message = text.value.trim();
+      if (!message) return;
+
+      const { error } = await db.from("messages").insert({
+        sender: name,
+        text: message
+      });
+
+      if (!error) text.value = "";
+      else alert("Senden fehlgeschlagen: " + error.message);
+    });
+
+    db.channel("chat")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages"
+      }, payload => show(payload.new))
+      .subscribe();
+
+    loadMessages();
+  </script>
+</body>
+</html>
